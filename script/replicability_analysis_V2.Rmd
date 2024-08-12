@@ -1,0 +1,455 @@
+---
+title: "Untitled"
+output: html_document
+date: '2024-07-18'
+---
+
+# Prerequisite
+
+```{r package, warning=FALSE, echo=TRUE}
+set.seed(2024)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(tidyr) 
+  library(distributional)
+  library(here)
+  library(readxl)
+  library(ggplot2)
+  library(metafor)
+  library(cowplot)
+  library(ggdist)
+  library(patchwork)
+  library(forcats)
+  library(RColorBrewer)
+  library(viridis)
+  library(ggrepel)}
+  )
+
+```
+
+# First example
+
+## Data
+
+```{r}
+# load example data
+load(here("data","moller12.rda"))
+# make a copy
+dat <- moller12
+```
+
+## Fit a RE model
+```{r}
+# fit
+dat <- escalc(measure="OR", ai = r1, n1i = n1, ci = r2, n2i = n2, data = dat)
+res <- rma(yi, vi, data = dat, method = 'REML', control = list(stepadj = 0.5, maxiter = 1000)) # https://github.com/cran/metafor/blob/master/R/influence.rma.uni.r
+# all measures at one go
+inf <- influence(res)$inf %>% as.data.frame()
+inf$study.name <- as.character(dat$study.name) 
+inf$id <- 1:nrow(inf)
+
+```
+
+## Visualization
+
+https://github.com/cxli233/FriendsDontLetFriends#1-friends-dont-let-friends-make-bar-plots-for-means-separation
+
+```{r}
+# check for NA values and remove them if necessary
+inf <- inf %>%
+  filter(!is.na(weight) & !is.na(rstudent) & !is.na(dffits) & !is.na(cook.d) & !is.na(study.name))
+
+inf <- inf %>%
+  mutate(cov_status = ifelse(cov.r >= 1, "Increased", "Decreased"))
+
+p1 <- inf %>% 
+ ggplot(aes(x = weight, y = rstudent)) +
+  geom_hline(yintercept = 1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = -1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_point(aes(fill = cook.d, size = dffits), shape = 21) +
+  scale_fill_gradientn(breaks = c(0, 0.2, 0.4, 0.6), labels = c(0, 0.2, 0.4, 0.6), colors = rev(brewer.pal(11, "RdBu"))) +
+  scale_y_continuous(limits = c(-3, 5)) +
+  labs(caption = "", x = "Weight", y = "Externally standardized residuals", fill = "Cook distance", size = "Coefficient difference") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"), 
+    legend.position = "right",
+    legend.title=element_text(size = 16), 
+    legend.text=element_text(size = 16)
+  ) + 
+   geom_text(aes(label = id), size = 6, hjust = 0.5, vjust = 2)  
+   #geom_text(aes(x = 6.54233 + 0.6, y = 4.841277, size = 4, label = "MASS III 2009"))
+
+p.tau2.del <- inf %>% 
+  ggplot(aes(x = id, y = tau2.del)) +
+  geom_segment(aes(x = id, xend = id), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, aes(fill = tau2.del, size = tau2.del)) +
+  scale_fill_gradientn(colors = viridis(n = 10)) +
+  scale_x_continuous(limits = c(1,17), breaks = seq(1,17,1), labels = seq(1,17,1)) + 
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Study ID", y = expression(paste("Estimated between-study variance ", tau^2)), fill = expression(tau^2)) +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"), 
+    legend.position = "none",
+    legend.title = element_text(size = 16), 
+    legend.text = element_text(size = 16)
+  )
+
+
+```
+
+
+# Second example
+
+## Data
+
+```{r}
+# load example data
+load(here("data","lahart18.rda"))
+# make a copy
+dat2 <- lahart18
+```
+
+## Fit a RE model
+```{r}
+res2 <- rma(y, vi = s2, data = dat2, method = 'REML', test = "knha", control = list(stepadj = 0.5, maxiter = 1000))
+# all measures at one go
+inf2 <- influence(res2)$inf %>% as.data.frame()
+inf2$study.name <- as.character(dat2$study.name) 
+inf2$id <- 1:nrow(inf2)
+```
+
+## Visualization
+
+```{r}
+# check for NA values and remove them if necessary
+inf2 <- inf2 %>%
+  filter(!is.na(weight) & !is.na(rstudent) & !is.na(dffits) & !is.na(cook.d) & !is.na(study.name))
+
+inf2 <- inf2 %>%
+  mutate(cov.r2 = sqrt(1 / cov.r))
+
+
+p2 <- inf2 %>% 
+ ggplot(aes(x = hat, y = rstudent)) +
+  geom_hline(yintercept = 1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = -1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_point(aes(fill = QE.del, size = cov.r2), shape = 21) +
+  scale_fill_gradientn(breaks = c(5,  10, 15), colors = viridis(n = 10)) +
+  scale_y_continuous(limits = c(-5, 2)) +
+  labs(caption = "", x = "Leverage", y = "Externally standardized residuals", fill = "Cochrane's Q", size = "Error difference") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"),
+    legend.position = "right",
+    legend.title = element_text(size = 16), 
+    legend.text = element_text(size = 16)
+  ) + 
+   geom_text(aes(label = id), size = 6, hjust = 0.5, vjust = 2)
+   #geom_text(aes(x = 0.1247957 + 0.01, y = -4.341413, size = 4, label = "Schmitz 2005"))
+
+```
+
+# Assembly
+
+```{r}
+png(filename = "fig.png", width = 12, height = 12, units = "in", type = "windows", res = 800)
+p1 + p2 + plot_layout(nrow = 2, ncol = 1) +
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = 16))
+dev.off() 
+
+```
+
+
+# Third example
+
+## Data
+
+```{r}
+dat3 <- escalc(measure = "RR", ai = tpos, bi = tneg, ci = cpos, di = cneg, data = dat.bcg)
+```
+
+
+## Fit a RE model
+
+```{r}
+
+
+res3 <- rma(yi, vi, mods = ~ ablat + year, method = 'REML', data = dat3, control = list(stepadj = 0.5, maxiter = 1000))
+# all measures at one go
+inf3 <- influence(res3)$inf %>% as.data.frame()
+inf3$study.name <- as.character(dat3$author) 
+inf3$id <- 1:nrow(inf3)
+```
+
+## Visualization
+
+```{r}
+p3 <- inf3 %>% 
+ ggplot(aes(x = weight, y = rstudent)) +
+  geom_hline(yintercept = 1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = -1.96, size = 0.5, linetype = "dashed", color = "red") +
+  geom_point(aes(size = cook.d, fill = dffits), shape = 21) +
+  scale_fill_gradientn(breaks = c(-3, -2, -1, 0, 1), labels = c(-3, -2, -1, 0, 1), colors = rev(brewer.pal(11, "RdBu"))) +
+  scale_y_continuous(limits = c(-3, 3)) +
+  labs(caption = "", x = "Weight", y = "Externally standardized residuals", fill = "Coefficient difference", size = "Cook distance") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"), 
+    legend.position = "right",
+    legend.title=element_text(size = 16), 
+    legend.text=element_text(size = 16)
+  ) + 
+   geom_text(aes(label = id), size = 6, hjust = 0.5, vjust = 2)  
+
+
+```
+
+# Standard practices of model diagonistics
+
+## Leave-one-out
+
+
+```{r}
+# load example data
+load(here("data","moller12.rda"))
+# make a copy
+dat <- moller12
+# fit
+dat <- escalc(measure="OR", ai = r1, n1i = n1, ci = r2, n2i = n2, data = dat)
+res <- rma(yi, vi, data = dat, method = 'REML', control = list(stepadj = 0.5, maxiter = 1000)) 
+res.l1o <- leave1out(res) %>% as.data.frame()
+res.l1o$study.name <- as.character(dat$study.name) 
+res.l1o$id <- 1:nrow(res.l1o)
+
+# visualization
+## beta
+p.beta.del <- ggplot(res.l1o) +
+  #geom_hline(yintercept = 0, lty = 2, lwd = 0.75, colour = "lightgrey") +
+  geom_hline(yintercept = res$ci.lb, lty = 3, lwd = 0.75, colour = "lightgrey") +
+  geom_hline(yintercept = res$b[1], lty = 1, lwd = 0.75, colour = "grey50") +
+  geom_hline(yintercept = res$ci.ub, lty = 3, lwd = 0.75, colour = "lightgrey") +
+  geom_pointrange(aes(x = id, y = estimate, ymin = ci.lb, ymax = ci.ub), color = "#E6AB02") +
+  scale_x_continuous(limits = c(1,17), breaks = seq(1,17,1), labels = seq(1,17,1)) +
+  xlab("Study left out") + 
+  ylab("Overal mean effect size (95% CI)") + 
+  coord_flip() +
+  theme(panel.grid.minor = element_blank())+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #panel.border = element_blank(),
+        #axis.ticks.y = element_blank(),
+        axis.line.x = element_line(colour = "black")) +
+  theme(axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"))
+
+## tau2
+p.tau2.del <- res.l1o %>% 
+  ggplot(aes(x = id, y = tau2)) +
+  geom_segment(aes(x = id, xend = id), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, aes(fill = tau2, size = tau2)) +
+  scale_fill_gradientn(colors = viridis(n = 10)) +
+  scale_x_continuous(limits = c(1,17), breaks = seq(1,17,1), labels = seq(1,17,1)) + # expand = c(0, 0)
+  scale_y_continuous(limits = c(0, 1)) +
+  coord_flip() +
+  labs(x = "Study left out", y = expression(paste("Estimated between-study variance ", tau^2)), fill = expression(tau^2)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 16, color = "black"), 
+        axis.title = element_text(size = 18, color = "black"), 
+        legend.position = "none",
+        legend.title = element_text(size = 14), 
+        legend.text = element_text(size = 14)
+  )
+
+## I2
+p.i2.del <- res.l1o %>% 
+  ggplot(aes(x = id, y = I2)) +
+  geom_segment(aes(x = id, xend = id), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, aes(fill = I2, size = I2)) +
+  scale_fill_gradientn(colors = viridis(n = 10)) +
+  scale_x_continuous(limits = c(1,17), breaks = seq(1,17,1), labels = seq(1,17,1)) + # expand = c(0, 0)
+  scale_y_continuous(limits = c(0, 100)) +
+  coord_flip() +
+  labs(x = "Study left out", y = expression(paste("Heterogeneity ", I^2)), fill = expression(I^2)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 16, color = "black"), 
+        axis.title = element_text(size = 18, color = "black"), 
+        legend.position = "none",
+        legend.title = element_text(size = 14), 
+        legend.text = element_text(size = 14)
+  )
+
+## Q
+p.Q.del <- res.l1o %>% 
+  ggplot(aes(x = id, y = Q)) +
+  geom_segment(aes(x = id, xend = id), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, aes(fill = Q, size = Q)) +
+  scale_fill_gradientn(colors = viridis(n = 10)) +
+  scale_x_continuous(limits = c(1,17), breaks = seq(1,17,1), labels = seq(1,17,1)) + # expand = c(0, 0)
+  scale_y_continuous(limits = c(0, 100)) +
+  coord_flip() +
+  labs(x = "Study left out", y = expression(paste("Heterogeneity Cochran’s Q"))) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 16, color = "black"), 
+        axis.title = element_text(size = 18, color = "black"), 
+        legend.position = "none",
+        legend.title = element_text(size = 14), 
+        legend.text = element_text(size = 14)
+  )
+
+
+png(filename = "fig 1.png", width = 12, height = 12, units = "in", type = "windows", res = 800)
+p.beta.del +  p.tau2.del + p.i2.del + p.Q.del + plot_layout(nrow = 2, ncol = 2) +
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = 18, color = "black"))
+dev.off() 
+
+
+```
+
+
+
+
+
+
+
+# Estimator
+
+https://www.metafor-project.org/doku.php/analyses:viechtbauer2007a
+
+https://www.metafor-project.org/doku.php/analyses:viechtbauer2005
+
+```{r}
+
+# using different estimators
+res.HS <- rma(yi, vi, data = dat, method = "HS")
+res.HE <- rma(yi, vi, data = dat, method = "HE")
+res.DL <- rma(yi, vi, data = dat, method = "DL")
+res.ML <- rma(yi, vi, data = dat, method = "ML")
+res.REML <- rma(yi, vi, data = dat, method = "REML")
+res.EB <- rma(yi, vi, data = dat, method = "EB")
+res.SJ <- rma(yi, vi, data = dat, method = "SJ")
+# extract estimates
+res.list <- list(res.HS, res.HE, res.DL, res.ML, res.REML, res.EB, res.SJ)
+df.tau2 <- data.frame(method = sapply(res.list, function(x) x$method),
+           tau2 = sapply(res.list, function(x) round(x$tau2,2)),
+           I2 = sapply(res.list, function(x) round(x$I2,0)))
+```
+
+
+# Estimator2
+
+https://www.metafor-project.org/doku.php/analyses:dersimonian2007
+
+Alternative meta-analysis of behavioral interventions to promote action on climate change yields different conclusions
+
+A comparison of heterogeneity variance estimators in simulated random‐effects meta‐analyses
+
+```{r}
+# load data
+van_der_Linden <- read_xlsx(here("data", "van_der_Linden.xlsx"))
+
+# only select the relevant variables
+dat <- data.frame(Study = van_der_Linden$Study, yi = van_der_Linden$SMD, vi = (van_der_Linden$se)^2)
+
+# different estimators
+res.PM  <- rma(yi, vi, method = "PM", data = dat)
+res.CA  <- rma(yi, vi, method = "HE", data = dat)
+res.DL  <- rma(yi, vi, method = "DL", data = dat)
+ 
+res.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), data = dat)
+res.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), data = dat)
+res.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, data = dat)
+res.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, data = dat)
+ 
+res.EB   <- rma(yi, vi, method = "EB",   data = dat)
+res.ML   <- rma(yi, vi, method = "ML",   data = dat)
+res.REML <- rma(yi, vi, method = "REML", data = dat)
+res.HS   <- rma(yi, vi, method = "HS",   data = dat)
+res.SJ   <- rma(yi, vi, method = "SJ",   data = dat)
+res.SJ2  <- rma(yi, vi, method = "SJ",   data = dat, control = list(tau2.init = res.CA$tau2))
+
+# dataframe
+res.list <- list(res.PM, res.CA, res.DL, res.CA2, res.DL2, res.EB, 
+                res.ML, res.REML, res.HS, res.SJ, res.SJ2)
+
+df.est <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
+  mu  = sapply(res.list, coef),
+  ci.lb  = sapply(res.list, function(x) x$ci.lb),
+  ci.ub  = sapply(res.list, function(x) x$ci.ub),
+  se = sapply(res.list, function(x) x$se[1]), 
+  tau2 = sapply(res.list, function(x) x$tau2)) %>% dfround(3)
+
+# plot
+# https://mjskay.github.io/ggdist/articles/freq-uncertainty-vis.html
+df.est %>% 
+  ggplot(aes(y = method, fill = method)) +
+  stat_halfeye(
+    aes(xdist = dist_normal(mu = mu, sigma = se)), size = 2, stroke = 1) +
+  theme_bw() +
+  labs(x = "Mean effect size", y = expression(paste("Estimator"))) +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"), 
+    legend.position = "none",
+    legend.title = element_text(size = 16), 
+    legend.text = element_text(size = 16)
+  )
+
+
+```
+
+
+
+# knha
+
+```{r}
+# adjustment
+res2.PM  <- rma(yi, vi, method = "PM", test = "knha", data = dat)
+res2.CA  <- rma(yi, vi, method = "HE", test = "knha", data = dat)
+res2.DL  <- rma(yi, vi, method = "DL", test = "knha", data = dat)
+ 
+res2.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), test = "knha", data = dat)
+res2.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), test = "knha", data = dat)
+res2.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, test = "knha", data = dat)
+res2.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, test = "knha", data = dat)
+ 
+res2.EB   <- rma(yi, vi, method = "EB", test = "knha", data = dat)
+res2.ML   <- rma(yi, vi, method = "ML", test = "knha", data = dat)
+res2.REML <- rma(yi, vi, method = "REML", data = dat)
+res2.HS   <- rma(yi, vi, method = "HS", test = "knha", data = dat)
+res2.SJ   <- rma(yi, vi, method = "SJ", test = "knha", data = dat)
+res2.SJ2  <- rma(yi, vi, method = "SJ", test = "knha", data = dat, control = list(tau2.init = res.CA$tau2))
+
+
+# extraction
+res.list2 <- list(res2.PM, res2.CA, res2.DL, res2.CA2, res2.DL2, res2.EB, 
+                res2.ML, res2.REML, res2.HS, res2.SJ, res2.SJ2)
+
+df.est2 <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
+  mu  = sapply(res.list2, coef),
+  ci.lb  = sapply(res.list2, function(x) x$ci.lb),
+  ci.ub  = sapply(res.list2, function(x) x$ci.ub),
+  se = sapply(res.list2, function(x) x$se[1]),
+  tau2 = sapply(res.list2, function(x) x$tau2)) %>% dfround(3)
+
+
+```

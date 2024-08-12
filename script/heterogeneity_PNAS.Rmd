@@ -1,0 +1,119 @@
+---
+title: "Untitled"
+output: html_document
+date: '2024-08-01'
+---
+
+# Prerequisite
+
+```{r package, warning=FALSE, echo=TRUE}
+set.seed(2024)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(tidyr) 
+  library(distributional)
+  library(here)
+  library(readxl)
+  library(ggplot2)
+  library(metafor)
+  library(cowplot)
+  library(ggdist)
+  library(patchwork)
+  library(RColorBrewer)
+  library(viridis)
+  library(ggrepel)}
+  )
+
+```
+
+# Estimator
+
+https://www.metafor-project.org/doku.php/analyses:dersimonian2007
+
+```{r}
+# prepare data
+dat <- read.csv(here("data", "landy_et_al_2021__h1.csv"))
+dat <- data.frame(yi = dat$yi, vi = (dat$sei)^2)
+
+# different estimators
+res.PM  <- rma(yi, vi, method = "PM", data = dat)
+res.CA  <- rma(yi, vi, method = "HE", data = dat)
+res.DL  <- rma(yi, vi, method = "DL", data = dat)
+ 
+res.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), data = dat)
+res.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), data = dat)
+res.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, data = dat)
+res.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, data = dat)
+ 
+res.EB   <- rma(yi, vi, method = "EB",   data = dat)
+res.ML   <- rma(yi, vi, method = "ML",   data = dat)
+res.REML <- rma(yi, vi, method = "REML", data = dat)
+res.HS   <- rma(yi, vi, method = "HS",   data = dat)
+res.SJ   <- rma(yi, vi, method = "SJ",   data = dat)
+res.SJ2  <- rma(yi, vi, method = "SJ",   data = dat, control = list(tau2.init = res.CA$tau2))
+
+# dataframe
+res.list <- list(res.PM, res.CA, res.DL, res.CA2, res.DL2, res.EB, 
+                res.ML, res.REML, res.HS, res.SJ, res.SJ2)
+
+df.est <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
+  tau2 = sapply(res.list, function(x) x$tau2),
+  I2 = sapply(res.list, function(x) x$I2),
+  H2 = sapply(res.list, function(x) x$H2)) %>% dfround(3)
+
+# plot
+# https://mjskay.github.io/ggdist/articles/freq-uncertainty-vis.html
+df.est %>% 
+  ggplot(aes(y = method, fill = method)) +
+  stat_halfeye(
+    aes(xdist = dist_normal(mu = mu, sigma = se)), size = 2, stroke = 1) +
+  theme_bw() +
+  labs(x = "Mean effect size", y = expression(paste("Estimator"))) +
+  theme(
+    axis.text = element_text(size = 16, color = "black"), 
+    axis.title = element_text(size = 18, color = "black"), 
+    legend.position = "none",
+    legend.title = element_text(size = 16), 
+    legend.text = element_text(size = 16)
+  )
+
+
+```
+
+
+
+# knha
+
+```{r}
+# adjustment
+res2.PM  <- rma(yi, vi, method = "PM", test = "knha", data = dat)
+res2.CA  <- rma(yi, vi, method = "HE", test = "knha", data = dat)
+res2.DL  <- rma(yi, vi, method = "DL", test = "knha", data = dat)
+ 
+res2.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), test = "knha", data = dat)
+res2.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), test = "knha", data = dat)
+res2.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, test = "knha", data = dat)
+res2.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, test = "knha", data = dat)
+ 
+res2.EB   <- rma(yi, vi, method = "EB", test = "knha", data = dat)
+res2.ML   <- rma(yi, vi, method = "ML", test = "knha", data = dat)
+res2.REML <- rma(yi, vi, method = "REML", data = dat)
+res2.HS   <- rma(yi, vi, method = "HS", test = "knha", data = dat)
+res2.SJ   <- rma(yi, vi, method = "SJ", test = "knha", data = dat)
+res2.SJ2  <- rma(yi, vi, method = "SJ", test = "knha", data = dat, control = list(tau2.init = res.CA$tau2))
+
+
+# extraction
+res.list2 <- list(res2.PM, res2.CA, res2.DL, res2.CA2, res2.DL2, res2.EB, 
+                res2.ML, res2.REML, res2.HS, res2.SJ, res2.SJ2)
+
+df.est2 <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
+  mu  = sapply(res.list2, coef),
+  ci.lb  = sapply(res.list2, function(x) x$ci.lb),
+  ci.ub  = sapply(res.list2, function(x) x$ci.ub),
+  se = sapply(res.list2, function(x) x$se[1]),
+  tau2 = sapply(res.list2, function(x) x$tau2)) %>% dfround(3)
+
+
+```
