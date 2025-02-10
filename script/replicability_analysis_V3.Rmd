@@ -1,10 +1,21 @@
 ---
-title: "Untitled"
-output: html_document
-date: '2024-08-10'
+title: "Diagnostics on meta-analysis models and implications for assessing replicability"
+author: "Yefeng Yanga & Shinichi Nakagawa"
+date: "02-10-2025"
+output:
+  rmdformats::downcute:
+    code_folding: show
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+    downcute_theme: "chaos"
+pkgdown:
+  as_is: true
 ---
 
 # Prerequisite
+
+Load all necessary packages. Package information is present at the end of this website.
 
 ```{r package, warning=FALSE, echo=TRUE}
 set.seed(2024)
@@ -30,32 +41,45 @@ suppressPackageStartupMessages({
 
 # First example
 
+The first example is a meta-analysis by Møller et al. (2012) comparing extracorporeal versus extracorporeal coronary artery bypass grafting (CABG) with heparin doses of less than 300 mg/k in the reduction of postoperative atrial fibrillation (POAF). We did not collect data directly from Møller et al (2012). Instead, we obtained data from the supplementary material of Xiao et al (2024).
+
 ## Data
+
+Load the data provided by Xiao et. al. (2024).
 
 ```{r}
 # load example data
 load(here("data","moller12.rda"))
 # make a copy
 dat <- moller12
+knitr::kable(dfround(dat,3) %>% head(), "pipe")
 ```
 
 ## Fit a RE model
+
 ```{r}
 # fit
 dat <- escalc(measure="OR", ai = r1, n1i = n1, ci = r2, n2i = n2, data = dat)
-res <- rma(yi, vi, data = dat, method = 'REML', control = list(stepadj = 0.5, maxiter = 1000)) # https://github.com/cran/metafor/blob/master/R/influence.rma.uni.r
+res <- rma(yi, vi, data = dat, method = 'REML', control = list(stepadj = 0.5, maxiter = 1000))
+print(res)
+```
+
+## Diagnoise the fitted model
+
+```{r}
 # all measures at one go
 inf <- influence(res)$inf %>% as.data.frame()
 inf$study.name <- as.character(dat$study.name) 
 inf$id <- 1:nrow(inf)
 
+knitr::kable(dfround(inf,3) %>% head(), "pipe")
 ```
 
 ## Visualization
 
-https://github.com/cxli233/FriendsDontLetFriends#1-friends-dont-let-friends-make-bar-plots-for-means-separation
+Visualize all results.
 
-```{r}
+```{r, warning=FALSE}
 # check for NA values and remove them if necessary
 inf <- inf %>%
   filter(!is.na(weight) & !is.na(rstudent) & !is.na(dffits) & !is.na(cook.d) & !is.na(study.name))
@@ -70,7 +94,7 @@ p1 <- inf %>%
   geom_point(aes(fill = cook.d, size = weight), shape = 21) +
   scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu"))) +
   scale_y_continuous(limits = c(-3, 5)) +
-  labs(caption = "", x = "Coefficient difference", y = "Externally standardized residuals", fill = "Cook distance", size = "Weight") +
+  labs(caption = "", x = "Changes in model coefficients", y = "Externally standardized residuals", fill = "Cook distance", size = "Weight") +
   theme_bw() +
   theme(
     axis.text = element_text(size = 16, color = "black"), 
@@ -79,10 +103,12 @@ p1 <- inf %>%
     legend.title=element_text(size = 16), 
     legend.text=element_text(size = 16)
   ) + 
-   geom_text(aes(label = id), size = 3, hjust = 0.5, vjust = 2)  
-   #geom_text(aes(x = 6.54233 + 0.6, y = 4.841277, size = 4, label = "MASS III 2009"))
+   geom_text(aes(label = id), size = 3, hjust = 0.5, vjust = 2)
+p1
+```
 
 
+```{r}
 p2 <- inf %>% 
  ggplot(aes(x = cov.r, y = rstudent)) +
   geom_hline(yintercept = 1.96, size = 0.5, linetype = "dashed", color = "red") +
@@ -90,7 +116,7 @@ p2 <- inf %>%
   geom_point(aes(fill = QE.del, size = hat), shape = 21) +
   scale_fill_gradientn(breaks = c(45, 50, 65, 80), colors = viridis(n = 10)) +
   scale_y_continuous(limits = c(-3, 5)) +
-  labs(caption = "", x = "Ratio of variance", y = "Externally standardized residuals", fill = "Cochran's Q", size = "Hat value") +
+  labs(caption = "", x = "Changes in variance", y = "Externally standardized residuals", fill = "Cochran's Q", size = "Hat value") +
   theme_bw() +
   theme(
     axis.text = element_text(size = 16, color = "black"), 
@@ -100,44 +126,45 @@ p2 <- inf %>%
     legend.text=element_text(size = 16)
   ) + 
    geom_text(aes(label = id), size = 3, hjust = 0.5, vjust = 3)
-
-
-png(filename = "fig 3.png", width = 10, height = 12, units = "in", type = "windows", res = 800)
-p1 + p2 + plot_layout(nrow = 2, ncol = 1) +
-  plot_annotation(tag_levels = 'A') & 
-  theme(plot.tag = element_text(size = 18, color = "black"))
-dev.off() 
-
+p2
 ```
 
 
+# Second example
 
-
-# Third example
+The second example is a meta-anlaysis by Colditz et. al. (1994) examining the effectivess of the bacillus Calmette-Guerin (BCG) vaccine for preventing tuberculosis. It is publicly available at `metafor` package.
 
 ## Data
 
-```{r}
-dat3 <- escalc(measure = "RR", ai = tpos, bi = tneg, ci = cpos, di = cneg, data = dat.bcg)
-```
+Load data from `metafor` package
 
+```{r}
+dat <- dat.bcg
+dat <- escalc(measure = "RR", ai = tpos, bi = tneg, ci = cpos, di = cneg, data = dat)
+knitr::kable(dfround(dat,3) %>% head(), "pipe")
+```
 
 ## Fit a RE model
 
 ```{r}
+res <- rma(yi, vi, mods = ~ ablat + year, method = 'REML', data = dat, control = list(stepadj = 0.5, maxiter = 1000))
+print(res)
+```
 
+## Diagnoise the fitted model
 
-res3 <- rma(yi, vi, mods = ~ ablat + year, method = 'REML', data = dat3, control = list(stepadj = 0.5, maxiter = 1000))
+```{r}
 # all measures at one go
-inf3 <- influence(res3)$inf %>% as.data.frame()
-inf3$study.name <- as.character(dat3$author) 
-inf3$id <- 1:nrow(inf3)
+inf <- influence(res)$inf %>% as.data.frame()
+inf$study.name <- as.character(dat$author) 
+inf$id <- 1:nrow(inf)
+knitr::kable(dfround(inf,3) %>% head(), "pipe")
 ```
 
 ## Visualization
 
-```{r}
-p3 <- inf3 %>% 
+```{r, warning=FALSE}
+p3 <- inf %>% 
  ggplot(aes(x = weight, y = rstudent)) +
   geom_hline(yintercept = 1.96, size = 0.5, linetype = "dashed", color = "red") +
   geom_hline(yintercept = -1.96, size = 0.5, linetype = "dashed", color = "red") +
@@ -153,15 +180,16 @@ p3 <- inf3 %>%
     legend.title=element_text(size = 16), 
     legend.text=element_text(size = 16)
   ) + 
-   geom_text(aes(label = id), size = 6, hjust = 0.5, vjust = 2)  
+   geom_text(aes(label = id), size = 6, hjust = 0.5, vjust = 2) 
 
-
+p3
 ```
 
-# Standard practices of model diagonistics
+# Standard procedures of model diagonistics
 
-## Leave-one-out
+We also use the example of Møller et al. (2012) to illustrate the Standard procedures of model diagonistics of meta-analysis.
 
+`metafor` provides all diagonistic measures in one-go.
 
 ```{r}
 # load example data
@@ -174,11 +202,15 @@ res <- rma(yi, vi, data = dat, method = 'REML', control = list(stepadj = 0.5, ma
 res.l1o <- leave1out(res) %>% as.data.frame()
 res.l1o$study.name <- as.character(dat$study.name) 
 res.l1o$id <- 1:nrow(res.l1o)
+knitr::kable(dfround(res.l1o,3) %>% head(), "pipe")
+```
 
+### Beta coefficient
+
+```{r, warning=FALSE}
 # visualization
 ## beta
 p.beta.del <- ggplot(res.l1o) +
-  #geom_hline(yintercept = 0, lty = 2, lwd = 0.75, colour = "lightgrey") +
   geom_hline(yintercept = res$ci.lb, lty = 3, lwd = 0.75, colour = "lightgrey") +
   geom_hline(yintercept = res$b[1], lty = 1, lwd = 0.75, colour = "grey50") +
   geom_hline(yintercept = res$ci.ub, lty = 3, lwd = 0.75, colour = "lightgrey") +
@@ -191,12 +223,16 @@ p.beta.del <- ggplot(res.l1o) +
   theme_bw() + 
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        #panel.border = element_blank(),
-        #axis.ticks.y = element_blank(),
         axis.line.x = element_line(colour = "black")) +
   theme(axis.text = element_text(size = 16, color = "black"), 
     axis.title = element_text(size = 18, color = "black"))
+p.beta.del
+```
 
+
+### Between-study variance
+
+```{r, warning=FALSE}
 ## tau2
 p.tau2.del <- res.l1o %>% 
   ggplot(aes(x = id, y = tau2)) +
@@ -217,7 +253,12 @@ p.tau2.del <- res.l1o %>%
         legend.title = element_text(size = 14), 
         legend.text = element_text(size = 14)
   )
+p.tau2.del
+```
 
+### Heterogeiety quantification
+
+```{r, warning=FALSE}
 ## I2
 p.i2.del <- res.l1o %>% 
   ggplot(aes(x = id, y = I2)) +
@@ -239,6 +280,12 @@ p.i2.del <- res.l1o %>%
         legend.text = element_text(size = 14)
   )
 
+p.i2.del
+```
+
+### Heterogeneity test
+
+```{r, warning=FALSE}
 ## Q
 p.Q.del <- res.l1o %>% 
   ggplot(aes(x = id, y = Q)) +
@@ -260,120 +307,12 @@ p.Q.del <- res.l1o %>%
         legend.text = element_text(size = 14)
   )
 
-
-png(filename = "fig 1.png", width = 12, height = 12, units = "in", type = "windows", res = 800)
-p.beta.del +  p.tau2.del + p.i2.del + p.Q.del + plot_layout(nrow = 2, ncol = 2) +
-  plot_annotation(tag_levels = 'A') & 
-  theme(plot.tag = element_text(size = 18, color = "black"))
-dev.off() 
-
-
+p.Q.del
 ```
 
-
-# Estimator
-
-https://www.metafor-project.org/doku.php/analyses:dersimonian2007
-
-https://www.metafor-project.org/doku.php/analyses:viechtbauer2007a
-
-https://www.metafor-project.org/doku.php/analyses:viechtbauer2005
-
-Alternative meta-analysis of behavioral interventions to promote action on climate change yields different conclusions
-
-A comparison of heterogeneity variance estimators in simulated random‐effects meta‐analyses
+# Package information
 
 ```{r}
-# load data
-van_der_Linden <- read_xlsx(here("data", "van_der_Linden.xlsx"))
-
-# only select the relevant variables
-dat <- data.frame(Study = van_der_Linden$Study, yi = van_der_Linden$SMD, vi = (van_der_Linden$se)^2)
-
-# different estimators
-res.PM  <- rma(yi, vi, method = "PM", data = dat)
-res.CA  <- rma(yi, vi, method = "HE", data = dat)
-res.DL  <- rma(yi, vi, method = "DL", data = dat)
-res.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), data = dat)
-res.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), data = dat)
-res.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, data = dat)
-res.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, data = dat)
-res.EB   <- rma(yi, vi, method = "EB",   data = dat)
-res.ML   <- rma(yi, vi, method = "ML",   data = dat)
-res.REML <- rma(yi, vi, method = "REML", data = dat)
-res.HS   <- rma(yi, vi, method = "HS",   data = dat)
-res.SJ   <- rma(yi, vi, method = "SJ",   data = dat)
-res.SJ2  <- rma(yi, vi, method = "SJ",   data = dat, control = list(tau2.init = res.CA$tau2))
-
-# dataframe
-res.list <- list(res.PM, res.CA, res.DL, res.CA2, res.DL2, res.EB, 
-                res.ML, res.REML, res.HS, res.SJ, res.SJ2)
-
-df.est <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
-  mu  = sapply(res.list, coef),
-  ci.lb  = sapply(res.list, function(x) x$ci.lb),
-  ci.ub  = sapply(res.list, function(x) x$ci.ub),
-  se = sapply(res.list, function(x) x$se[1]), 
-  tau2 = sapply(res.list, function(x) x$tau2)) %>% dfround(3)
-df.est$method <- as.factor(df.est$method)
-df.est$method <- factor(df.est$method, levels = c("SJ2", "SJ", "HS", "REML", "ML", "EB", "DL2", "CA2", "DL", "CA", "PM"))
-
-# plot
-# https://mjskay.github.io/ggdist/articles/freq-uncertainty-vis.html
-p.est <- df.est %>% 
-  ggplot(aes(y = method, fill = method)) +
-  stat_halfeye(
-    aes(xdist = dist_normal(mu = mu, sigma = se)), size = 2, stroke = 1) +
-  theme_bw() +
-  labs(x = "Overall mean effect size (95% CI)", y = expression(paste("Estimator"))) +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-    axis.text = element_text(size = 16, color = "black"), 
-    axis.title = element_text(size = 18, color = "black"), 
-    legend.position = "none",
-    legend.title = element_text(size = 16), 
-    legend.text = element_text(size = 16)
-  )
-
-png(filename = "fig 2.png", width = 9, height = 9, units = "in", type = "windows", res = 800)
-p.est
-dev.off() 
-
+subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loadedversion))
 ```
 
-
-
-# knha
-
-```{r}
-# adjustment
-res2.PM  <- rma(yi, vi, method = "PM", test = "knha", data = dat)
-res2.CA  <- rma(yi, vi, method = "HE", test = "knha", data = dat)
-res2.DL  <- rma(yi, vi, method = "DL", test = "knha", data = dat)
- 
-res2.CA2 <- rma(yi, vi, method = "GENQ", weights = 1/(vi + res.CA$tau2), test = "knha", data = dat)
-res2.DL2 <- rma(yi, vi, method = "GENQ", weights=1/(vi + res.DL$tau2), test = "knha", data = dat)
-res2.CA2 <- rma(yi, vi, tau2 = res.CA2$tau2, test = "knha", data = dat)
-res2.DL2 <- rma(yi, vi, tau2 = res.DL2$tau2, test = "knha", data = dat)
- 
-res2.EB   <- rma(yi, vi, method = "EB", test = "knha", data = dat)
-res2.ML   <- rma(yi, vi, method = "ML", test = "knha", data = dat)
-res2.REML <- rma(yi, vi, method = "REML", data = dat)
-res2.HS   <- rma(yi, vi, method = "HS", test = "knha", data = dat)
-res2.SJ   <- rma(yi, vi, method = "SJ", test = "knha", data = dat)
-res2.SJ2  <- rma(yi, vi, method = "SJ", test = "knha", data = dat, control = list(tau2.init = res.CA$tau2))
-
-
-# extraction
-res.list2 <- list(res2.PM, res2.CA, res2.DL, res2.CA2, res2.DL2, res2.EB, 
-                res2.ML, res2.REML, res2.HS, res2.SJ, res2.SJ2)
-
-df.est2 <- data.frame(method = c("PM", "CA", "DL", "CA2", "DL2", "EB", "ML", "REML", "HS", "SJ", "SJ2"),
-  mu  = sapply(res.list2, coef),
-  ci.lb  = sapply(res.list2, function(x) x$ci.lb),
-  ci.ub  = sapply(res.list2, function(x) x$ci.ub),
-  se = sapply(res.list2, function(x) x$se[1]),
-  tau2 = sapply(res.list2, function(x) x$tau2)) %>% dfround(3)
-
-
-```
